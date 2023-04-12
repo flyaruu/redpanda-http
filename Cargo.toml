@@ -2,7 +2,7 @@
 name = "redpanda-http-rust"
 version = "0.0.1"
 edition = "2021"
-license = "Apache License"
+license = "Apache-2.0"
 description = "Client library for consuming the HTTP api of RedPanda, meant to be extended for edge devices, currently ESP32 and WASM"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
