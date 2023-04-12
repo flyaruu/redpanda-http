@@ -1,8 +1,6 @@
-use reqwest::blocking::Client;
+use reqwest::{blocking::Client, header::{HeaderMap, HeaderValue, CONTENT_TYPE, HeaderName}};
 
-use crate::panda_client::{RedPandaHttpClient, RedPandaError, RedPandaClient};
-
-
+use crate::panda_client::{RedPandaHttpClient, RedPandaError};
 // pub fn new_reqwest_panda_client(initial_url: &str, group: &str)->Result<RedPandaClient,RedPandaError> {
 //     RedPandaClient::new(initial_url, group)
 // }
@@ -16,9 +14,15 @@ impl ReqwestRedPandaClient {
     }
 }
 impl RedPandaHttpClient for ReqwestRedPandaClient {
-    fn post(&mut self, url: &str, body: Vec<u8>)->Result<Vec<u8>,RedPandaError> {
+    fn post(&mut self, url: &str, headers: &mut Vec<(String, String)>, body: Vec<u8>)->Result<Vec<u8>,RedPandaError> {
+        // let headers = HeaderMap::new();
+        let mut header_map: HeaderMap = HeaderMap::new();
+        for (key,value) in headers {
+            header_map.append(HeaderName::from_bytes(key.as_bytes()).unwrap(), HeaderValue::from_bytes(value.as_bytes()).unwrap());
+        }
+        header_map.append(CONTENT_TYPE, HeaderValue::from_bytes("application/vnd.kafka.v2+json".as_bytes()).unwrap());
         let result = self.client.post(url)
-            .header("Content-Type", "application/vnd.kafka.v2+json")
+            .headers(header_map)
             .body(body)
             .send()
             .map_err(|e| RedPandaError(e.to_string()))?
