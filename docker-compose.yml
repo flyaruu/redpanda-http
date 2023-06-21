@@ -1,0 +1,55 @@
+version: '2'
+services:
+  redpanda:
+    command:
+    - redpanda
+    - start
+    - --smp
+    - '1'
+    - --reserve-memory
+    - 0M
+    - --overprovisioned
+    - --node-id
+    - '0'
+    - --kafka-addr
+    - PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
+    - --advertise-kafka-addr
+    - PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092
+    - --set redpanda.enable_idempotence=true
+    - --set redpanda.enable_transactions=true
+    #- --advertise-pandaproxy-addr localhost:8082
+    - --advertise-pandaproxy-addr 10.11.12.177:8082
+ 
+    # NOTE: Please use the latest version here!
+    image: docker.redpanda.com/vectorized/redpanda:latest
+    container_name: redpanda-1
+    ports:
+    - 8080:8081
+    - 8082:8082
+    - 9092:9092
+    - 29092:29092
+  console:
+    image: vectorized/console:latest
+    entrypoint: /bin/sh
+    command: -c "echo \"$$CONSOLE_CONFIG_FILE\" > /tmp/config.yml; /app/console"
+    environment:
+      CONFIG_FILEPATH: /tmp/config.yml
+      CONSOLE_CONFIG_FILE: |
+        kafka:
+          brokers: ["redpanda:29092"]
+          schemaRegistry:
+            enabled: true
+            urls: ["http://redpanda:8081"]
+        redpanda:
+          adminApi:
+            enabled: true
+            urls: ["http://redpanda:9644"]
+        connect:
+          enabled: true
+          clusters:
+            - name: local-connect-cluster
+              url: http://connect:8083
+    ports:
+      - 8084:8080
+    depends_on:
+      - redpanda
