@@ -1,8 +1,11 @@
-use std::{collections::HashMap, str::from_utf8};
+use std::{collections::HashMap, str::from_utf8, vec};
 
-use serde::{Serialize, Deserialize};
+use serde::{Serialize, Deserialize, ser::SerializeMap};
 
 const DEBUG: bool = true;
+
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 
 #[derive(Serialize)]
 pub struct Consumer<'a> {
@@ -21,9 +24,9 @@ pub struct Consumer<'a> {
 pub struct RedPandaError(pub String);
 pub trait RedPandaHttpClient {
     // fn post(&mut self,  url: &str, headers: &mut Vec<(&str, &str)>, data: Vec<u8>)->Result<Vec<u8>,RedPandaError>;
-    fn post(&mut self, url: &str, headers: &mut Vec<(String, String)>, data: Vec<u8>)->Result<Vec<u8>,RedPandaError>;
+    fn post(&mut self, url: &str, headers: &Vec<(String, String)>, data: Vec<u8>)->Result<Vec<u8>,RedPandaError>;
 
-    fn get(&mut self, url: &str)->Result<Vec<u8>, RedPandaError>;
+    fn get(&mut self, url: &str, headers: &Vec<(String, String)>)->Result<Vec<u8>, RedPandaError>;
 }
 
 
@@ -74,7 +77,7 @@ impl CommitState {
         result
     }
 }
-#[derive(Deserialize)]
+#[derive(Deserialize,Serialize)]
 #[derive(Clone)]
 struct ConsumerResponse {
     instance_id: String,
@@ -88,16 +91,40 @@ struct SubscribeRequest<'a> {
 #[derive(Deserialize,Serialize)]
 pub struct Record {
     pub topic: String,
-    #[serde(with="base64")]
-    pub key: Vec<u8>,
-    #[serde(with="base64")]
-    pub value: Vec<u8>,
+    #[serde(with="base64_option")]
+    pub key: Option<Vec<u8>>,
+    #[serde(with="base64_option")]
+    pub value: Option<Vec<u8>>,
     pub partition: u16,
     pub offset: u64
     
 }
 
-#[derive(Clone)]
+#[derive(Deserialize)]
+pub struct PublishRecord {
+    pub key: Option<Vec<u8>>,
+    #[serde(with="base64_option")]
+    pub value: Option<Vec<u8>>,
+}
+
+impl PublishRecord {
+    pub fn from_string(message: String)->Self {
+        Self { key: None, value: Some(message.into_bytes()) }
+    }
+}
+
+#[derive(Serialize)]
+pub struct PublishRecordList {
+    records: Vec<PublishRecord>
+}
+
+impl PublishRecordList {
+    pub fn from_string(message: String)->Self {
+        PublishRecordList{records: vec![PublishRecord::from_string(message)]}
+    } 
+}
+
+#[derive(Clone,Deserialize,Serialize)]
 pub struct RedPandaClient {
     inital_url: String,
     group: String,
@@ -111,10 +138,11 @@ impl RedPandaClient {
         let body = serde_json::to_vec(&consumer)
             .map_err(|_| RedPandaError("Error serializing JSON request".to_owned()))?
         ;
-        let url = format!("{}{}", client.inital_url, client.group);
+        let url = format!("{}consumers/{}", client.inital_url, client.group);
         let mut headers = vec![("Content-Type".to_owned(),"application/vnd.kafka.v2+json".to_owned())];
         if DEBUG {
-            println!("Initializing using url: {}\nBody:\n{}",url,serde_json::to_string_pretty(&consumer).unwrap())
+            println!("Initializing using url: {}\nBody:\n{}",url,serde_json::to_string_pretty(&consumer).unwrap());
+            println!("Headers: {:?}",headers);
         }
         let result = http_client.post(&url, &mut headers, body)?;
         if DEBUG {
@@ -132,7 +160,7 @@ impl RedPandaClient {
         if DEBUG {
             println!("Registering topic using url: {}\nBody:\n{}",url,serde_json::to_string_pretty(&subscr).unwrap())
         }
-        let _ = client.post(&url, &mut Default::default(), body);
+        let _ = client.post(&url, &vec![("Content-Type".to_owned(),"application/vnd.kafka.v2+json".to_owned())], body)?;
         Ok(())
     }
 
@@ -141,15 +169,28 @@ impl RedPandaClient {
         if DEBUG {
             println!("Calling get from url: {}",url);
         }
-        let records = client.get(&url)?;
-        let parsed:Vec<Record> = serde_json::from_slice(&records).map_err(|_| RedPandaError("Error parsing polling response".to_owned()))?;
+                // .header("Accept", "application/vnd.kafka.binary.v2+json")
+
+        let records = client.get(&url,&vec![("Accept".to_owned(), "application/vnd.kafka.binary.v2+json".to_owned())])?;
+        if DEBUG {
+            let text = String::from_utf8(records.clone()).unwrap();
+            println!("Result body: {}",text);
+        }
+        let parsed:Vec<Record> = serde_json::from_slice(&records).map_err(|e|{println!("Noom: {}",e); RedPandaError(format!("Error parsing polling response. Response:\n{}",from_utf8(&records).unwrap_or("error")))})?;
         if DEBUG {
             println!("Polled from url: {}\nBody:\n{}",url,serde_json::to_string_pretty(&parsed).unwrap());
         }
         Ok(parsed)
     }
     
-    
+    pub fn publish(&mut self, client: &mut Box<dyn RedPandaHttpClient>, topic: String, record: PublishRecordList)->Result<(), RedPandaError> {
+        let url = format!("{}topics/{}",self.inital_url,topic);
+        let headers = vec![("Content-Type".to_owned(),"application/vnd.kafka.binary.v2+json".to_owned())];
+        let l = serde_json::to_vec(&record).map_err(|_| RedPandaError("error serializing publish".to_owned()))?;
+        let _reply = client.post(&url, &headers, l)?;
+        Ok(())
+    }
+
     pub fn commit_state(&mut self, client: &mut Box<dyn RedPandaHttpClient>, state: &CommitState) ->  Result<(), RedPandaError> {
         let partitions = state.partition_list();
         let commits = HashMap::from([("partitions".to_owned(),partitions)]);
@@ -168,22 +209,50 @@ impl RedPandaClient {
     }
 }
 
-mod base64 {
+impl Serialize for PublishRecord {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer {
+        let field_count = self.key.as_ref().map(|_|1).unwrap_or(0) + 
+            self.value.as_ref().map(|_|1).unwrap_or(0);
+
+        // todo!()
+        let mut map = serializer.serialize_map(Some(field_count))?;
+        if self.key.is_some() {
+            map.serialize_entry("key",&BASE64_STANDARD.encode(self.key.as_ref().unwrap()))?;
+        }
+        if self.value.is_some() {
+            map.serialize_entry("value",&BASE64_STANDARD.encode(self.value.as_ref().unwrap()))?;
+        }
+        map.end()
+    }
+}
+
+mod base64_option {
     use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
     use serde::{Serialize, Deserialize};
     use serde::{Deserializer, Serializer};
 
-    pub fn serialize<S: Serializer>(v: &Vec<u8>, s: S) -> Result<S::Ok, S::Error> {
-        // base64::engine::GeneralPurpose
-        // BASE64_STANDARD::encode
-        let base64 = base64::prelude::BASE64_STANDARD.encode(v);
-        String::serialize(&base64, s)
+    pub fn serialize<S: Serializer>(v: &Option<Vec<u8>>, s: S) -> Result<S::Ok, S::Error> {
+        // base64::encode(input)
+        let base64 = match v {
+
+            Some(v) => Some(BASE64_STANDARD.encode(v)),
+            None => None,
+        };
+        <Option<String>>::serialize(&base64, s)
     }
     
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
-        let base64 = String::deserialize(d)?;
-        base64::prelude::BASE64_STANDARD.decode(base64.as_bytes())
-            .map_err(serde::de::Error::custom)
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Vec<u8>>, D::Error> {
+        let base64 = <Option<String>>::deserialize(d)?;
+        match base64 {
+            Some(v) => {
+                BASE64_STANDARD.decode(v.as_bytes())
+                    .map(|v| Some(v))
+                    .map_err(|e| serde::de::Error::custom(e))
+            },
+            None => Ok(None),
+        }
     }
 }
