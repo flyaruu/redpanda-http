@@ -6,6 +6,7 @@ const DEBUG: bool = true;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use simplehttp::simplehttp::SimpleHttpClient;
 
 #[derive(Serialize)]
 pub struct Consumer<'a> {
@@ -22,13 +23,6 @@ pub struct Consumer<'a> {
 
 #[derive(Debug)]
 pub struct RedPandaError(pub String);
-pub trait RedPandaHttpClient {
-    // fn post(&mut self,  url: &str, headers: &mut Vec<(&str, &str)>, data: Vec<u8>)->Result<Vec<u8>,RedPandaError>;
-    fn post(&mut self, url: &str, headers: &Vec<(String, String)>, data: Vec<u8>)->Result<Vec<u8>,RedPandaError>;
-
-    fn get(&mut self, url: &str, headers: &Vec<(String, String)>)->Result<Vec<u8>, RedPandaError>;
-}
-
 
 
 impl<'a> Consumer<'a> {
@@ -97,7 +91,6 @@ pub struct Record {
     pub value: Option<Vec<u8>>,
     pub partition: u16,
     pub offset: u64
-    
 }
 
 #[derive(Deserialize)]
@@ -132,7 +125,7 @@ pub struct RedPandaClient {
 }
 
 impl RedPandaClient {
-    pub fn new(http_client: &mut Box<dyn RedPandaHttpClient>, inital_url: &str, group: &str)->Result<RedPandaClient,RedPandaError> {
+    pub fn new(http_client: &mut Box<dyn SimpleHttpClient>, inital_url: &str, group: &str)->Result<RedPandaClient,RedPandaError> {
         let mut client = RedPandaClient { inital_url: inital_url.to_owned(), group: group.to_owned(), consumer_response: Option::None};
         let consumer = Consumer::create();
         let body = serde_json::to_vec(&consumer)
@@ -144,7 +137,7 @@ impl RedPandaClient {
             println!("Initializing using url: {}\nBody:\n{}",url,serde_json::to_string_pretty(&consumer).unwrap());
             println!("Headers: {:?}",headers);
         }
-        let result = http_client.post(&url, &mut headers, body)?;
+        let result = http_client.post(&url, &mut headers, body).map_err(|e| RedPandaError(format!("error creating consumer: {:?}",e)))?;
         if DEBUG {
             println!("Result text:\n{}", from_utf8(result.as_slice()).map_err(|_| RedPandaError("Issues creating utf8".to_owned()))?);
         }
@@ -152,7 +145,7 @@ impl RedPandaClient {
         Ok(client)
     }
 
-    pub fn register_topic(&mut self, client: &mut Box<dyn RedPandaHttpClient>, topics: Vec<&str>) ->  Result<(), RedPandaError> {
+    pub fn register_topic(&mut self, client: &mut Box<dyn SimpleHttpClient>, topics: Vec<&str>) ->  Result<(), RedPandaError> {
         let subscr = SubscribeRequest{topics};
         let url = format!("{}/subscription",self.consumer_response.as_ref().unwrap().base_uri);
         let body = serde_json::to_vec(&subscr)
@@ -160,18 +153,19 @@ impl RedPandaClient {
         if DEBUG {
             println!("Registering topic using url: {}\nBody:\n{}",url,serde_json::to_string_pretty(&subscr).unwrap())
         }
-        let _ = client.post(&url, &vec![("Content-Type".to_owned(),"application/vnd.kafka.v2+json".to_owned())], body)?;
+        let _ = client.post(&url, &vec![("Content-Type".to_owned(),"application/vnd.kafka.v2+json".to_owned())], body).map_err(|e| RedPandaError(format!("error registering topic: {:?}",e)))?;
         Ok(())
     }
 
-    pub fn poll(&mut self, client: &mut Box<dyn RedPandaHttpClient>, bytecount: i32) -> Result<Vec<Record>,RedPandaError> {
+    pub fn poll(&mut self, client: &mut Box<dyn SimpleHttpClient>, bytecount: i32) -> Result<Vec<Record>,RedPandaError> {
         let url = format!("{}/records?timeout=10000&&max_bytes={}",self.consumer_response.as_ref().unwrap().base_uri,bytecount);
         if DEBUG {
             println!("Calling get from url: {}",url);
         }
                 // .header("Accept", "application/vnd.kafka.binary.v2+json")
 
-        let records = client.get(&url,&vec![("Accept".to_owned(), "application/vnd.kafka.binary.v2+json".to_owned())])?;
+        let records = client.get(&url,&vec![("Accept".to_owned(), "application/vnd.kafka.binary.v2+json".to_owned())])
+            .map_err(|e| RedPandaError(format!("error polling: {:?}",e)))?;
         if DEBUG {
             let text = String::from_utf8(records.clone()).unwrap();
             println!("Result body: {}",text);
@@ -183,15 +177,16 @@ impl RedPandaClient {
         Ok(parsed)
     }
     
-    pub fn publish(&mut self, client: &mut Box<dyn RedPandaHttpClient>, topic: String, record: PublishRecordList)->Result<(), RedPandaError> {
+    pub fn publish(&mut self, client: &mut Box<dyn SimpleHttpClient>, topic: String, record: PublishRecordList)->Result<(), RedPandaError> {
         let url = format!("{}topics/{}",self.inital_url,topic);
         let headers = vec![("Content-Type".to_owned(),"application/vnd.kafka.binary.v2+json".to_owned())];
         let l = serde_json::to_vec(&record).map_err(|_| RedPandaError("error serializing publish".to_owned()))?;
-        let _reply = client.post(&url, &headers, l)?;
+        let _reply = client.post(&url, &headers, l)
+            .map_err(|e| RedPandaError(format!("error publishing: {:?}",e)))?;
         Ok(())
     }
 
-    pub fn commit_state(&mut self, client: &mut Box<dyn RedPandaHttpClient>, state: &CommitState) ->  Result<(), RedPandaError> {
+    pub fn commit_state(&mut self, client: &mut Box<dyn SimpleHttpClient>, state: &CommitState) ->  Result<(), RedPandaError> {
         let partitions = state.partition_list();
         let commits = HashMap::from([("partitions".to_owned(),partitions)]);
         let body = serde_json::to_vec(&commits ).map_err(|_| RedPandaError("Error serializing commit state".to_owned()))?;
@@ -200,7 +195,9 @@ impl RedPandaClient {
         if DEBUG {
             println!("Committing to url:{}\nBody:\n{}",url,serde_json::to_string_pretty(&commits).unwrap());
         }
-        let _ = client.post(&url, &mut Default::default(), body);
+        let _ = client.post(&url, &mut Default::default(), body)
+            .map_err(|e| RedPandaError(format!("error commiting state: {:?}",e)))
+        ;
         Ok(())
     }
 
@@ -254,5 +251,15 @@ mod base64_option {
             },
             None => Ok(None),
         }
+    }
+}
+
+#[cfg(test)]
+#[cfg(feature = "reqwest")]
+mod tests {
+
+    #[test]
+    fn test_reqwest() {
+        
     }
 }
