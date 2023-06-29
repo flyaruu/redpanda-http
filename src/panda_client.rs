@@ -104,11 +104,15 @@ impl PublishRecord {
     pub fn from_string(message: String)->Self {
         Self { key: None, value: Some(message.into_bytes()) }
     }
+
+    pub fn from_bytes(value: Option<&[u8]>)->Self {
+        PublishRecord { key: None, value: value.map(|f|f.to_vec()) }
+    }
 }
 
 #[derive(Serialize)]
 pub struct PublishRecordList {
-    records: Vec<PublishRecord>
+    pub records: Vec<PublishRecord>
 }
 
 impl PublishRecordList {
@@ -132,12 +136,12 @@ impl RedPandaClient {
             .map_err(|_| RedPandaError("Error serializing JSON request".to_owned()))?
         ;
         let url = format!("{}consumers/{}", client.inital_url, client.group);
-        let mut headers = vec![("Content-Type".to_owned(),"application/vnd.kafka.v2+json".to_owned())];
+        let mut headers = vec![("Content-Type","application/vnd.kafka.v2+json")];
         if DEBUG {
             println!("Initializing using url: {}\nBody:\n{}",url,serde_json::to_string_pretty(&consumer).unwrap());
             println!("Headers: {:?}",headers);
         }
-        let result = http_client.post(&url, &mut headers, body).map_err(|e| RedPandaError(format!("error creating consumer: {:?}",e)))?;
+        let result = http_client.post(&url, &mut headers, &body).map_err(|e| RedPandaError(format!("error creating consumer: {:?}",e)))?;
         if DEBUG {
             println!("Result text:\n{}", from_utf8(result.as_slice()).map_err(|_| RedPandaError("Issues creating utf8".to_owned()))?);
         }
@@ -153,7 +157,7 @@ impl RedPandaClient {
         if DEBUG {
             println!("Registering topic using url: {}\nBody:\n{}",url,serde_json::to_string_pretty(&subscr).unwrap())
         }
-        let _ = client.post(&url, &vec![("Content-Type".to_owned(),"application/vnd.kafka.v2+json".to_owned())], body).map_err(|e| RedPandaError(format!("error registering topic: {:?}",e)))?;
+        let _ = client.post(&url, &vec![("Content-Type","application/vnd.kafka.v2+json")], &body).map_err(|e| RedPandaError(format!("error registering topic: {:?}",e)))?;
         Ok(())
     }
 
@@ -164,7 +168,7 @@ impl RedPandaClient {
         }
                 // .header("Accept", "application/vnd.kafka.binary.v2+json")
 
-        let records = client.get(&url,&vec![("Accept".to_owned(), "application/vnd.kafka.binary.v2+json".to_owned())])
+        let records = client.get(&url,&vec![("Accept", "application/vnd.kafka.binary.v2+json")])
             .map_err(|e| RedPandaError(format!("error polling: {:?}",e)))?;
         if DEBUG {
             let text = String::from_utf8(records.clone()).unwrap();
@@ -179,9 +183,9 @@ impl RedPandaClient {
     
     pub fn publish(&mut self, client: &mut Box<dyn SimpleHttpClient>, topic: String, record: PublishRecordList)->Result<(), RedPandaError> {
         let url = format!("{}topics/{}",self.inital_url,topic);
-        let headers = vec![("Content-Type".to_owned(),"application/vnd.kafka.binary.v2+json".to_owned())];
+        let headers = vec![("Content-Type","application/vnd.kafka.binary.v2+json")];
         let l = serde_json::to_vec(&record).map_err(|_| RedPandaError("error serializing publish".to_owned()))?;
-        let _reply = client.post(&url, &headers, l)
+        let _reply = client.post(&url, &headers, &l)
             .map_err(|e| RedPandaError(format!("error publishing: {:?}",e)))?;
         Ok(())
     }
@@ -195,7 +199,7 @@ impl RedPandaClient {
         if DEBUG {
             println!("Committing to url:{}\nBody:\n{}",url,serde_json::to_string_pretty(&commits).unwrap());
         }
-        let _ = client.post(&url, &mut Default::default(), body)
+        let _ = client.post(&url, &[], &body)
             .map_err(|e| RedPandaError(format!("error commiting state: {:?}",e)))
         ;
         Ok(())
