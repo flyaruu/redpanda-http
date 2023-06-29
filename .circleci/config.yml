@@ -5,4 +5,4 @@ jobs:
       - image: cimg/rust:1.70.0
     steps:
       - checkout
-      - run: cargo build --features reqwest
+      - run: cargo build
