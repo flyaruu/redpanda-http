@@ -7,3 +7,6 @@ It has a pluggable http client library, in order to make it embedded and WASM fr
 
 This implementation has a 'reqwest' based implementation, and there is an ESP32-IDF version in development for
 embedded use cases, and a Spin based implementation to support WASM.
+
+CI:
+[![CircleCI](https://circleci.com/gh/flyaruu/redpanda-http-rust.svg?style=svg)](https://circleci.com/gh/flyaruu/redpanda-http-rust)

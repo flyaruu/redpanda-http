@@ -2,7 +2,7 @@ version: 2.1
 jobs:
   build:
     docker:
-      - image: cimg/rust:1.68.2
+      - image: cimg/rust:1.70.0
     steps:
       - checkout
       - run: cargo build --features reqwest
