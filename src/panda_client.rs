@@ -1,5 +1,6 @@
 use std::{collections::HashMap, str::from_utf8, vec};
 
+use log::debug;
 use serde::{Serialize, Deserialize, ser::SerializeMap};
 
 const DEBUG: bool = true;
@@ -138,13 +139,14 @@ impl RedPandaClient {
         let url = format!("{}consumers/{}", client.inital_url, client.group);
         let mut headers = vec![("Content-Type","application/vnd.kafka.v2+json")];
         if DEBUG {
-            println!("Initializing using url: {}\nBody:\n{}",url,serde_json::to_string_pretty(&consumer).unwrap());
-            println!("Headers: {:?}",headers);
+            debug!("Initializing using url: {}\nBody:\n{}",url,serde_json::to_string_pretty(&consumer).unwrap());
+            debug!("Headers: {:?}",headers);
         }
         let result = http_client.post(&url, &mut headers, &body).map_err(|e| RedPandaError(format!("error creating consumer: {:?}",e)))?;
         if DEBUG {
-            println!("Result text:\n{}", from_utf8(result.as_slice()).map_err(|_| RedPandaError("Issues creating utf8".to_owned()))?);
+            debug!("Result text:\n{}", from_utf8(result.as_slice()).map_err(|_| RedPandaError("Issues creating utf8".to_owned()))?);
         }
+
         client.consumer_response = Some(serde_json::from_slice(&result).map_err(|_| RedPandaError("Error parsing JSON Red Panda reply".to_owned()))?);
         Ok(client)
     }
@@ -155,7 +157,7 @@ impl RedPandaClient {
         let body = serde_json::to_vec(&subscr)
             .map_err(|_| RedPandaError("Error serializing subscription request".to_owned()))?;
         if DEBUG {
-            println!("Registering topic using url: {}\nBody:\n{}",url,serde_json::to_string_pretty(&subscr).unwrap())
+            debug!("Registering topic using url: {}\nBody:\n{}",url,serde_json::to_string_pretty(&subscr).unwrap())
         }
         let _ = client.post(&url, &vec![("Content-Type","application/vnd.kafka.v2+json")], &body).map_err(|e| RedPandaError(format!("error registering topic: {:?}",e)))?;
         Ok(())
@@ -164,7 +166,7 @@ impl RedPandaClient {
     pub fn poll(&mut self, client: &mut Box<dyn SimpleHttpClient>, bytecount: i32) -> Result<Vec<Record>,RedPandaError> {
         let url = format!("{}/records?timeout=10000&&max_bytes={}",self.consumer_response.as_ref().unwrap().base_uri,bytecount);
         if DEBUG {
-            println!("Calling get from url: {}",url);
+            debug!("Calling get from url: {}",url);
         }
                 // .header("Accept", "application/vnd.kafka.binary.v2+json")
 
@@ -172,11 +174,11 @@ impl RedPandaClient {
             .map_err(|e| RedPandaError(format!("error polling: {:?}",e)))?;
         if DEBUG {
             let text = String::from_utf8(records.clone()).unwrap();
-            println!("Result body: {}",text);
+            debug!("Result body: {}",text);
         }
-        let parsed:Vec<Record> = serde_json::from_slice(&records).map_err(|e|{println!("Noom: {}",e); RedPandaError(format!("Error parsing polling response. Response:\n{}",from_utf8(&records).unwrap_or("error")))})?;
+        let parsed:Vec<Record> = serde_json::from_slice(&records).map_err(|_|{RedPandaError(format!("Error parsing polling response. Response:\n{}",from_utf8(&records).unwrap_or("error")))})?;
         if DEBUG {
-            println!("Polled from url: {}\nBody:\n{}",url,serde_json::to_string_pretty(&parsed).unwrap());
+            debug!("Polled from url: {}\nBody:\n{}",url,serde_json::to_string_pretty(&parsed).unwrap());
         }
         Ok(parsed)
     }
@@ -185,7 +187,7 @@ impl RedPandaClient {
         let url = format!("{}topics/{}",self.inital_url,topic);
         let headers = vec![("Content-Type","application/vnd.kafka.binary.v2+json")];
         let l = serde_json::to_vec(&record).map_err(|_| RedPandaError("error serializing publish".to_owned()))?;
-        let _reply = client.post(&url, &headers, &l)
+        let _reply = client.post(&url, &headers, &l[..])
             .map_err(|e| RedPandaError(format!("error publishing: {:?}",e)))?;
         Ok(())
     }
@@ -197,9 +199,9 @@ impl RedPandaClient {
         // let value = from_utf8(&body).map_err(|_| RedPandaError("UTF8 error".to_owned()))?;
         let url = format!("{}/offsets",self.consumer_response.as_ref().unwrap().base_uri);
         if DEBUG {
-            println!("Committing to url:{}\nBody:\n{}",url,serde_json::to_string_pretty(&commits).unwrap());
+            debug!("Committing to url:{}\nBody:\n{}",url,serde_json::to_string_pretty(&commits).unwrap());
         }
-        let _ = client.post(&url, &[], &body)
+        let _ = client.post(&url, &vec![], &body)
             .map_err(|e| RedPandaError(format!("error commiting state: {:?}",e)))
         ;
         Ok(())
