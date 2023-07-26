@@ -1,6 +1,7 @@
 use std::{collections::HashMap, str::from_utf8, vec};
 
 use log::debug;
+use serde::Deserializer;
 use serde::{Serialize, Deserialize, ser::SerializeMap};
 
 const DEBUG: bool = true;
@@ -164,8 +165,9 @@ impl RedPandaClient {
         Ok(())
     }
 
-    // pub fn poll<T>(&mut self, client: &mut Box<dyn SimpleHttpClient>, bytecount: i32) -> Result<Vec<T>,RedPandaError> where T: Deserialize {
-    //     let l: Vec<Record> = self.poll(client, bytecount)?;
+    // pub fn poll_thing<'a, T>(&mut self, bytecount: i32) -> Result<Vec<T>,RedPandaError> where for<'de> T: Deserialize<'de> + 'a {
+    //     let l: Vec<Record> = self.poll( bytecount)?;
+    //     let xx: Vec<T> = l.iter().filter_map(f) map(|f| serde_json::from_slice(&f.value[..])).collect();
     // }
 
     pub fn poll(&mut self, bytecount: i32) -> Result<Vec<Record>,RedPandaError> {

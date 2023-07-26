@@ -1,5 +1,5 @@
 [package]
-name = "redpanda-http-rust"
+name = "redpanda-http"
 version = "0.0.1"
 edition = "2021"
 license = "Apache-2.0"
@@ -10,5 +10,5 @@ base64 = "0.21.0"
 log = "0.4.19"
 serde = { version = "1.0.160", features = ["derive"] }
 serde_json = "1.0.95"
-simplehttp = { git = "https://github.com/flyaruu/simplehttp" }
+simplehttp = "0.0.1"
 
