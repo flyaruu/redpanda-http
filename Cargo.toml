@@ -3,7 +3,9 @@ name = "redpanda-http"
 version = "0.0.1"
 edition = "2021"
 license = "Apache-2.0"
+authors = ["Frank Lyaruu <flyaruu@gmail.com>"]
 description = "Client library for consuming the HTTP api of RedPanda, meant to be extended for edge devices, currently ESP32 and WASM"
+
 
 [dependencies]
 base64 = "0.21.0"
