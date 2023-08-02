@@ -1,16 +1,30 @@
-pub mod panda_subscriber;
-pub mod panda_publisher;
-
-use std::fmt::Display;
+pub mod subscriber;
+pub mod publisher;
 
 use thiserror::Error;
 
 #[derive(Debug,Error)]
-pub struct RedPandaError(pub String);
 
-impl Display for RedPandaError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
+#[error("RedPanda http error {0}")]
+pub struct RedPandaError(pub String, #[source] pub Option<Box<dyn std::error::Error>>);
+
+// impl Display for RedPandaError {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         f.write_str(&self.0)
+//     }
+// }
+
+impl RedPandaError {
+    pub fn simple(msg: &str)->Self {
+        RedPandaError(msg.to_owned(), None)
+    }
+
+    pub fn nested(msg: &str, cause: Box<dyn std::error::Error>)->Self {
+        RedPandaError(msg.to_owned(), Some(cause))
+    }
+
+    pub fn wrap(cause: Box<dyn std::error::Error>)->Self {
+        RedPandaError("".to_owned(), Some(cause))
     }
 }
 
