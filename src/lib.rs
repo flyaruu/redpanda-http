@@ -8,6 +8,7 @@ use thiserror::Error;
 #[error("RedPanda http error {0}")]
 pub struct RedPandaError(pub String, #[source] pub Option<Box<dyn std::error::Error>>);
 
+
 // impl Display for RedPandaError {
 //     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 //         f.write_str(&self.0)
