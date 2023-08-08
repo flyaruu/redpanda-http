@@ -278,7 +278,7 @@ impl Subscriber {
         if DEBUG {
             warn!("Committing to url:{}\nBody:\n{}",url,serde_json::to_string_pretty(&commits).unwrap());
         }
-        let result = self.client.post(&url, &[("Accept","application/vnd.kafka.v2+json"),("Content-Type","application/vnd.kafka.v2+json")], &body)
+        let _result = self.client.post(&url, &[("Accept","application/vnd.kafka.v2+json"),("Content-Type","application/vnd.kafka.v2+json")], &body)
             .map_err(|e| RedPandaError::nested("error commiting state",Box::new(e)))?
         ;
         // I guess clear the commit state?

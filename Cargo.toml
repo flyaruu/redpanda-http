@@ -1,6 +1,6 @@
 [package]
 name = "redpanda-http"
-version = "0.0.3"
+version = "0.0.4"
 edition = "2021"
 license = "Apache-2.0"
 authors = ["Frank Lyaruu <flyaruu@gmail.com>"]
@@ -12,6 +12,6 @@ base64 = "0.21.0"
 log = "0.4.19"
 serde = { version = "1.0.160", features = ["derive"] }
 serde_json = "1.0.95"
-simplehttp = { path = "../simplehttp"}
+simplehttp = { version = "0.0.4"}
 thiserror = "1.0.44"
 
