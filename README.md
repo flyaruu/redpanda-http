@@ -9,4 +9,4 @@ This implementation has a 'reqwest' based implementation, and there is an ESP32-
 embedded use cases, and a Spin based implementation to support WASM.
 
 CI:
-[![CircleCI](https://circleci.com/gh/flyaruu/redpanda-http-rust.svg?style=svg)](https://circleci.com/gh/flyaruu/redpanda-http-rust)
+[![CircleCI](https://circleci.com/gh/flyaruu/redpanda-http.svg?style=svg)](https://circleci.com/gh/flyaruu/redpanda-http)
